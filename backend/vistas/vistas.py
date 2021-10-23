@@ -50,17 +50,12 @@ class VistaTareas(Resource):
             nueva_tarea = Tarea(
             archivo = Filename,
             formato = formatoant,
-            formatonew = formato,
-            nombre = nombre,
             fecha = datetime.today(),
             estado = "UPLOADED",
             usuario_id = usuario_id)            
             db.session.add(nueva_tarea)
             db.session.commit()
             token_de_acceso = create_access_token(identity = usuario_id)
-
-
-
 
             return {"mensaje":"La tarea fue creada exitosamente", "token":token_de_acceso}
 
