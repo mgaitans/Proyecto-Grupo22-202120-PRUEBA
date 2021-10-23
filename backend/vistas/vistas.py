@@ -10,6 +10,7 @@ from werkzeug.utils import secure_filename
 import subprocess
 import shutil
 import os
+from ..tareas import convertir_cancion
 
 usuario_schema = UsuarioSchema()
 tarea_schema = TareaSchema()
@@ -50,16 +51,27 @@ class VistaTareas(Resource):
             nueva_tarea = Tarea(
             archivo = Filename,
             formato = formatoant,
+            formatonew = formato,
+            nombre = nombre,
             fecha = datetime.today(),
             estado = "UPLOADED",
             usuario_id = usuario_id)            
             db.session.add(nueva_tarea)
             db.session.commit()
+            print(nueva_tarea.nombre,nueva_tarea.formato.name,nueva_tarea.formatonew.name)
+            convertir_cancion.delay(nueva_tarea.id,nueva_tarea.nombre,nueva_tarea.formato.name,nueva_tarea.formatonew.name)
             token_de_acceso = create_access_token(identity = usuario_id)
-
             return {"mensaje":"La tarea fue creada exitosamente", "token":token_de_acceso}
 
 
+class VistaConversion(Resource):
+    def post(self):
+        id_task = request.json['id_task'] 
+        task_download = Tarea.query.get_or_404(id_task)
+        task_download.estado = 'PROCESSED'
+        db.session.commit()
+        return {"mensaje":"La tarea fue actualizada exitosamente"}
+        
     
              
 # end point: /api/tasks/<int:id_task>
@@ -93,7 +105,6 @@ class VistaTarea(Resource):
 
 class VistaDescarga(Resource):
     def get(self, id_task, tipo_task):
-        print('holaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
         task_download = Tarea.query.filter(Tarea.id == id_task).first()
         if task_download is None:
             return {"mensaje":"La tarea no existe!"},401
@@ -108,45 +119,26 @@ class VistaDescarga(Resource):
         else:
             return {"mensaje":"El tipo de archivo que quiere descargar no existe!"},500      
 
-    def post(self, id_task):
-        usuario_id = 1
-        # Carpeta de subida    
-        UPLOAD_FOLDER = 'files\\uploaded'
-        DOWNLOAD_FOLDER = 'files\\download'
-
-        f = request.files['fileName'] 
-        
-        filename = secure_filename(f.filename)
-        path = pathlib.Path(UPLOAD_FOLDER + filename)
-        formato = request.form["newFormat"]
-        
-
-        if not f:
-            return {"mensaje":"INGRESE ARCHIVO A CONVERTIR"}
-        elif not formato:
-            return {"mensaje":"INGRESE FORMATO A CONVERTIR EL ARCHIVO"}
-        else:
-            FFMPEG_BIN = "ffmpeg.exe"   
-            f.save(os.path.join(UPLOAD_FOLDER, filename))
-            dfile = '{}.{}'.format(os.path.splitext(filename)[0], str(format)) 
-            inputF = os.path.join(UPLOAD_FOLDER, filename)
-            outputF = os.path.join(DOWNLOAD_FOLDER, dfile)
-            convertCMD = [FFMPEG_BIN, '-y', '-i', inputF, outputF]
-            executeOrder66 = subprocess.Popen(convertCMD)
-            print('pasa')
-            return {"mensaje":"La tarea fue creada exitosamente"}
+    
 # endpoint /api/auth/signup
 class VistaSignUp(Resource):
 
     def post(Self):
-        user_exist = Usuario.query.filter(Usuario.usuario == request.json["email"]).all()
+        user_exist = Usuario.query.filter(Usuario.username == request.json["username"]).all()
+        email_exist = Usuario.query.filter(Usuario.email == request.json["email"]).all()
+        pwd1= Usuario.query.filter(Usuario.password1 == request.json["password1"])
+        pwd2= Usuario.query.filter(Usuario.password2 == request.json["password2"])
         if len(user_exist) > 0:
             return{"mensaje":"El usuario ya existe.","estado":0}, 400
-        new_user = Usuario(usuario=request.json["nombre"],email=request.json["email"],contrasena=request.json["contrasena"])
+        if len(email_exist) > 0:
+            return{"mensaje":"El email estpa asociado a otro usuario.","estado":0}, 400
+        if pwd1 != pwd2:
+            return{"mensaje":"Las contraseñas no coinciden.","estado":0}, 400
+        new_user = Usuario(username=request.json["username"],email=request.json["email"],password1=request.json["password1"],password2=request.json["password2"])
         db.session.add(new_user)
         db.session.commit()
         access_token = create_access_token(identity = new_user.id)
-        return {"mensaje":"Usuario creado exitosamente", "estado":1, "token":access_token}, 200
+        return {"mensaje":"Usuario creado exitosamente.", "estado":1, "token":access_token}, 200
 
 class VistaUser(Resource):
 
@@ -156,13 +148,13 @@ class VistaUser(Resource):
 # endpoint /api/auth/login
 class VistaLogIn(Resource):
     def post(self):
-        user = Usuario.query.filter(Usuario.usuario == request.json["email"], Usuario.contrasena == request.json["contrasena"]).first()
+        user = Usuario.query.filter(Usuario.username == request.json["username"], Usuario.password1 == request.json["password"]).first()
         db.session.commit()
         if user is None:
-            return {"mensaje":"El usuario no existe"}, 404
+            return {"mensaje":"El usuario no existe."}, 404
         else:
             access_token = create_access_token(identity = user.id)
-            return {"mensaje":"Inicio de sesión exitoso", "token":access_token}
+            return {"mensaje":"Inicio de sesión exitoso.", "token":access_token}
 
 
 
