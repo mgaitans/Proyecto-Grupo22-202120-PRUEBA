@@ -10,15 +10,23 @@ from werkzeug.utils import secure_filename
 import subprocess
 import shutil
 import os
-from ..tareas import convertir_cancion
+from ..tareas import convertir_cancion, enviar_mail
 
 usuario_schema = UsuarioSchema()
 tarea_schema = TareaSchema()
  
 # end point: /api/tasks
 class VistaTareas(Resource):
+
+    @jwt_required()
+    def get(self):
+        usuario_id = get_jwt_identity()
+        return [tarea_schema.dump(ca) for ca in Tarea.query.filter(Tarea.usuario_id == usuario_id).all()]
+        
+    @jwt_required()
     def post(self):
-        usuario_id = 1
+        usuario_id = get_jwt_identity()
+       
         # Carpeta de subida    
         UPLOAD_FOLDER = '../backend/files/uploaded/'
         # obtenemos el archivo del input "fileName" de postman 
@@ -58,24 +66,30 @@ class VistaTareas(Resource):
             usuario_id = usuario_id)            
             db.session.add(nueva_tarea)
             db.session.commit()
-            print(nueva_tarea.nombre,nueva_tarea.formato.name,nueva_tarea.formatonew.name)
-            convertir_cancion.delay(nueva_tarea.id,nueva_tarea.nombre,nueva_tarea.formato.name,nueva_tarea.formatonew.name)
+            usuario = Usuario.query.get_or_404(usuario_id)
+            convertir_cancion.delay(nueva_tarea.id,nueva_tarea.nombre,nueva_tarea.formato.name,nueva_tarea.formatonew.name, usuario.email)
             token_de_acceso = create_access_token(identity = usuario_id)
             return {"mensaje":"La tarea fue creada exitosamente", "token":token_de_acceso}
-
+    
+    
+        
 
 class VistaConversion(Resource):
     def post(self):
         id_task = request.json['id_task'] 
+        print(id_task)
         task_download = Tarea.query.get_or_404(id_task)
+        print(task_download)
         task_download.estado = 'PROCESSED'
         db.session.commit()
+        print(task_download)
         return {"mensaje":"La tarea fue actualizada exitosamente"}
         
     
              
 # end point: /api/tasks/<int:id_task>
 class VistaTarea(Resource):
+    @jwt_required()
     def get(self, id_task):
         exit_tarea = Tarea.query.filter(Tarea.id == id_task).first()
         db.session.commit()
@@ -84,6 +98,7 @@ class VistaTarea(Resource):
         else:
             return tarea_schema.dump(Tarea.query.get_or_404(id_task))
 
+    @jwt_required()
     def put(self, id_task):
         task_download = Tarea.query.get_or_404(id_task)
         UPLOAD_FOLDER = '../backend/files/uploaded/'
@@ -102,6 +117,20 @@ class VistaTarea(Resource):
                 task_download.fecha = datetime.today()
                 db.session.commit()
             return {"mensaje":"La tarea fue actualizada exitosamente"}
+
+    @jwt_required() 
+    def delete(self, id_task):
+        task_download = Tarea.query.filter(Tarea.id == id_task).first()
+
+        UPLOAD_FOLDER = '../backend/files/uploaded/'
+        os.remove(os.path.join(UPLOAD_FOLDER, task_download.nombre+'.'+task_download.formato.name))
+
+        if task_download.estado == 'PROCESSED':
+            PROCESSED_FOLDER = '../backend/files/processed/'
+            os.remove(os.path.join(PROCESSED_FOLDER, task_download.nombre+'.'+task_download.formatonew.name))
+
+        return {"mensaje":"El archivo fue eliminado exitosamente"}
+
 
 class VistaDescarga(Resource):
     def get(self, id_task, tipo_task):
@@ -126,13 +155,13 @@ class VistaSignUp(Resource):
     def post(Self):
         user_exist = Usuario.query.filter(Usuario.username == request.json["username"]).all()
         email_exist = Usuario.query.filter(Usuario.email == request.json["email"]).all()
-        pwd1= Usuario.query.filter(Usuario.password1 == request.json["password1"])
-        pwd2= Usuario.query.filter(Usuario.password2 == request.json["password2"])
+        # pwd1= Usuario.query.filter(Usuario.password1 == request.json["password1"])
+        # pwd2= Usuario.query.filter(Usuario.password2 == request.json["password2"])
         if len(user_exist) > 0:
             return{"mensaje":"El usuario ya existe.","estado":0}, 400
         if len(email_exist) > 0:
             return{"mensaje":"El email estpa asociado a otro usuario.","estado":0}, 400
-        if pwd1 != pwd2:
+        if request.json["password1"] != request.json["password2"]:
             return{"mensaje":"Las contraseñas no coinciden.","estado":0}, 400
         new_user = Usuario(username=request.json["username"],email=request.json["email"],password1=request.json["password1"],password2=request.json["password2"])
         db.session.add(new_user)

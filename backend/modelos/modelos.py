@@ -32,6 +32,7 @@ class Tarea(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey("usuario.id"), nullable=False)
     usuario = db.relationship('Usuario', backref=db.backref('tarea', lazy=True))
 
+
 class EnumADiccionario(fields.Field):
     def _serialize(self, value, attr, obj, **kwargs):
         if value is None:
@@ -45,8 +46,10 @@ class UsuarioSchema(SQLAlchemyAutoSchema):
         load_instance = True
 
 class TareaSchema(SQLAlchemyAutoSchema):
-    formato = EnumADiccionario(attribute=("formato"))
+    # formato = EnumADiccionario(attribute=("formato"))
+    # formatonew = EnumADiccionario(attribute=("formatonew"))
     class Meta:
         model = Tarea
         include_relationships = True
+        exclude = ['formato','formatonew']
         load_instance = True
